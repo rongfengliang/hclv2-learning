@@ -1,16 +1,15 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
-	"sync"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/hashicorp/hcl/v2/hclparse"
+	"github.com/robfig/cron/v3"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -28,7 +27,14 @@ type JobSpec struct {
 
 // Job is a job runner
 type Job interface {
-	Exec() error
+	Run()
+	CronExpression() string
+	SetID(int)
+	GetID() int
+	SetName(string)
+	GetName() string
+	GetType() string
+	SetType(string)
 }
 
 // JobDetailSpec is job detail spec
@@ -40,31 +46,103 @@ type JobDetailSpec struct {
 type HTTPJob struct {
 	Name     string
 	Type     string
+	ID       int
 	Driver   string `hcl:"driver"`
 	WebHook  string `hcl:"webhook"`
 	Location string `hcl:"location"`
 	Query    string `hcl:"query"`
+	Schedule string `hcl:"schedule"`
 }
 
-// Exec  HTTPJob exec method
-func (job *HTTPJob) Exec() error {
-	log.Printf("HTTPJob job %s----%s----%s-----%s", job.Driver, job.Query, job.Location, job.Name)
-	return errors.New("HTTPJob some wrong")
+// Run  HTTPJob exec method
+func (job *HTTPJob) Run() {
+	log.Printf("DbJob job %s----%s----%s---%s-----%s--------%d", job.Driver, job.Query, job.Schedule, job.Location, job.Name, job.ID)
+}
+
+// SetID SetID
+func (job *HTTPJob) SetID(id int) {
+	job.ID = id
+}
+
+// GetID GetID
+func (job *HTTPJob) GetID() int {
+	return job.ID
+}
+
+// SetName setName
+func (job *HTTPJob) SetName(name string) {
+	job.Name = name
+}
+
+// GetName GetName
+func (job *HTTPJob) GetName() string {
+	return job.Name
+}
+
+// SetType SetType
+func (job *HTTPJob) SetType(name string) {
+	job.Type = name
+}
+
+// GetType GetType
+func (job *HTTPJob) GetType() string {
+	return job.Type
+}
+
+// CronExpression get cron expression
+func (job *HTTPJob) CronExpression() string {
+	return job.Schedule
 }
 
 // DbJob dbjob
 type DbJob struct {
 	Name     string
 	Type     string
+	ID       int
 	Location string `hcl:"location"`
 	Driver   string `hcl:"driver"`
 	Query    string `hcl:"query"`
+	Schedule string `hcl:"schedule"`
 }
 
-// Exec  DbJob exec method
-func (job *DbJob) Exec() error {
-	log.Printf("DbJob job %s----%s----%s-----%s", job.Driver, job.Query, job.Location, job.Name)
-	return errors.New("DbJob some wrong")
+// Run  DbJob exec method
+func (job *DbJob) Run() {
+	log.Printf("DbJob job %s----%s----%s---%s-----%s--------%d", job.Driver, job.Query, job.Schedule, job.Location, job.Name, job.ID)
+}
+
+// CronExpression  get cron expression
+func (job *DbJob) CronExpression() string {
+	return job.Schedule
+}
+
+// SetID SetID
+func (job *DbJob) SetID(id int) {
+	job.ID = id
+}
+
+// GetID GetID
+func (job *DbJob) GetID() int {
+	return job.ID
+}
+
+// SetName setName
+func (job *DbJob) SetName(name string) {
+	job.Name = name
+}
+
+// GetName GetName
+func (job *DbJob) GetName() string {
+	return job.Name
+}
+
+// SetType SetType
+func (job *DbJob) SetType(name string) {
+	job.Type = name
+}
+
+// GetType GetType
+func (job *DbJob) GetType() string {
+	return job.Type
 }
 
 // JobContainer jobcontainer
@@ -76,6 +154,19 @@ const (
 	// DEFAULTLOCATION default load location
 	DEFAULTLOCATION = "demo"
 )
+
+var (
+	cronhub *cron.Cron
+)
+
+func init() {
+	cronhub = cron.New(cron.WithChain(
+		cron.SkipIfStillRunning(cron.DefaultLogger),
+		cron.Recover(cron.DefaultLogger),
+	), cron.WithParser(cron.NewParser(
+		cron.SecondOptional|cron.Minute|cron.Hour|cron.Dom|cron.Month|cron.Dow|cron.Descriptor,
+	)))
+}
 
 // create eval context
 func evalContext() *hcl.EvalContext {
@@ -99,7 +190,7 @@ func evalContext() *hcl.EvalContext {
 
 func main() {
 
-	var sw sync.WaitGroup
+	// var sw sync.WaitGroup
 	var buildJobs JobContainer = JobContainer{}
 	src, err := ioutil.ReadFile(FILENAME)
 	if err != nil {
@@ -138,24 +229,31 @@ func main() {
 			}
 			buildJobs["db"] = append(buildJobs["db"], dbjob)
 		default:
-			// Error in the case of an unknown type. In the future, more types
-			// could be added to the switch to support, for example, fish
-			// owners.
 			fmt.Errorf("error in ReadConfig: unknown pet type ")
 		}
 	}
+	// print all map jobs
+	for _, jobs := range buildJobs {
+		for _, job := range jobs {
+			// this way add job not  works
+			// id, err := cronhub.AddFunc(job.CronExpression(), func() {
+			// 	job.Run()
+			// })
 
-	for jobtype, jobs := range buildJobs {
-		// print http job info
-		fmt.Printf("%s\r\n", jobtype)
-		sw.Add(1)
-		go func(jobs []Job) {
-			defer sw.Done()
-			for _, job := range jobs {
-				job.Exec()
+			// this way works
+			id, err := cronhub.AddJob(job.CronExpression(), job)
+			if err != nil {
+				fmt.Println("create job error")
+			} else {
+				job.SetID(int(id))
 			}
-		}(jobs)
+		}
 	}
-	sw.Wait()
-
+	for name, jobs := range buildJobs {
+		fmt.Println(name)
+		for _, job := range jobs {
+			fmt.Printf("%d,%s,%s \r\n", job.GetID(), job.GetName(), job.GetType())
+		}
+	}
+	cronhub.Run()
 }
