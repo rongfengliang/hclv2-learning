@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"sync"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
@@ -47,7 +48,7 @@ type HTTPJob struct {
 
 // Exec  HTTPJob exec method
 func (job *HTTPJob) Exec() error {
-	log.Printf("HTTPJob job %s----%s----%s", job.Driver, job.Query, job.Location)
+	log.Printf("HTTPJob job %s----%s----%s-----%s", job.Driver, job.Query, job.Location, job.Name)
 	return errors.New("HTTPJob some wrong")
 }
 
@@ -62,9 +63,12 @@ type DbJob struct {
 
 // Exec  DbJob exec method
 func (job *DbJob) Exec() error {
-	log.Printf("DbJob job %s----%s----%s", job.Driver, job.Query, job.Location)
+	log.Printf("DbJob job %s----%s----%s-----%s", job.Driver, job.Query, job.Location, job.Name)
 	return errors.New("DbJob some wrong")
 }
+
+// JobContainer jobcontainer
+type JobContainer map[string][]Job
 
 const (
 	// FILENAME  hcl filename
@@ -95,7 +99,8 @@ func evalContext() *hcl.EvalContext {
 
 func main() {
 
-	var jobs []Job
+	var sw sync.WaitGroup
+	var buildJobs JobContainer = JobContainer{}
 	src, err := ioutil.ReadFile(FILENAME)
 	if err != nil {
 		panic("some wrong,can't load file content")
@@ -121,7 +126,7 @@ func main() {
 					)
 				}
 			}
-			jobs = append(jobs, httpjob)
+			buildJobs["http"] = append(buildJobs["http"], httpjob)
 		case "db":
 			dbjob := &DbJob{Name: item.Name, Type: item.Type, Location: "demo"}
 			if item.JobDetailSpec != nil {
@@ -131,7 +136,7 @@ func main() {
 					)
 				}
 			}
-			jobs = append(jobs, dbjob)
+			buildJobs["db"] = append(buildJobs["db"], dbjob)
 		default:
 			// Error in the case of an unknown type. In the future, more types
 			// could be added to the switch to support, for example, fish
@@ -140,8 +145,17 @@ func main() {
 		}
 	}
 
-	for _, job := range jobs {
-		job.Exec()
+	for jobtype, jobs := range buildJobs {
+		// print http job info
+		fmt.Printf("%s\r\n", jobtype)
+		sw.Add(1)
+		go func(jobs []Job) {
+			defer sw.Done()
+			for _, job := range jobs {
+				job.Exec()
+			}
+		}(jobs)
 	}
+	sw.Wait()
 
 }
