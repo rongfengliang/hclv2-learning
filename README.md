@@ -1,0 +1,1 @@
+# hcl v2 golang lerning
