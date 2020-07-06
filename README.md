@@ -16,3 +16,11 @@
 ├── config-v2.hcl
 ├── go.mod
 ```
+
+## running
+
+* v2 
+
+```code
+go run cmd/v2/main.go
+```
