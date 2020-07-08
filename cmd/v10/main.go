@@ -46,7 +46,7 @@ func main() {
 	for _, item := range myjobs {
 		for _, job := range item {
 			v, _ := json.Marshal(&job)
-			log.Printf("message: %s\r\r\n", string(v))
+			log.Printf("message: %s \r\n", string(v))
 		}
 	}
 }
