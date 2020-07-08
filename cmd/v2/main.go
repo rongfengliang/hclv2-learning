@@ -99,6 +99,7 @@ type DbJob struct {
 	Name     string
 	Type     string
 	ID       int
+	WebHook  string `hcl:"webhook,optional"`
 	Location string `hcl:"location"`
 	Driver   string `hcl:"driver"`
 	Query    string `hcl:"query"`
@@ -189,14 +190,11 @@ func evalContext() *hcl.EvalContext {
 }
 
 func main() {
-
-	// var sw sync.WaitGroup
 	var buildJobs JobContainer = JobContainer{}
 	src, err := ioutil.ReadFile(FILENAME)
 	if err != nil {
 		panic("some wrong,can't load file content")
 	}
-
 	parse := hclparse.NewParser()
 	srcHCL, diag := parse.ParseHCL(src, FILENAME)
 	if diag.HasErrors() {
@@ -204,17 +202,16 @@ func main() {
 	}
 	jobsSpec := &JobsSpec{}
 	if diag := gohcl.DecodeBody(srcHCL.Body, evalContext(), jobsSpec); diag.HasErrors() {
-		fmt.Errorf("error in ReadConfig decoding HCL configuration: %w", diag)
+		log.Println("read config error")
 	}
 	for _, item := range jobsSpec.JobSpecs {
+		log.Println("job type", item.Type)
 		switch jobtype := item.Type; jobtype {
 		case "http":
 			httpjob := &HTTPJob{Name: item.Name, Type: item.Type, Location: "demo"}
 			if item.JobDetailSpec != nil {
 				if diag := gohcl.DecodeBody(item.JobDetailSpec.HCL, evalContext(), httpjob); diag.HasErrors() {
-					fmt.Errorf(
-						"error in ReadConfig decoding cat HCL configuration: %w", diag,
-					)
+					log.Println(diag.Errs())
 				}
 			}
 			buildJobs["http"] = append(buildJobs["http"], httpjob)
@@ -222,37 +219,40 @@ func main() {
 			dbjob := &DbJob{Name: item.Name, Type: item.Type, Location: "demo"}
 			if item.JobDetailSpec != nil {
 				if diag := gohcl.DecodeBody(item.JobDetailSpec.HCL, evalContext(), dbjob); diag.HasErrors() {
-					fmt.Errorf(
-						"error in ReadConfig decoding cat HCL configuration: %w", diag,
-					)
+					log.Println(diag.Errs())
 				}
 			}
 			buildJobs["db"] = append(buildJobs["db"], dbjob)
 		default:
-			fmt.Errorf("error in ReadConfig: unknown pet type ")
+			log.Println("not support type")
 		}
 	}
 	// print all map jobs
 	for _, jobs := range buildJobs {
 		for _, job := range jobs {
-			// this way add job not  works
-			// id, err := cronhub.AddFunc(job.CronExpression(), func() {
-			// 	job.Run()
-			// })
-
-			// this way works
-			id, err := cronhub.AddJob(job.CronExpression(), job)
+			myjob := job
+			id, err := cronhub.AddJob(myjob.CronExpression(), myjob)
 			if err != nil {
 				fmt.Println("create job error")
 			} else {
-				job.SetID(int(id))
+				myjob.SetID(int(id))
 			}
 		}
 	}
 	for name, jobs := range buildJobs {
 		fmt.Println(name)
 		for _, job := range jobs {
-			fmt.Printf("%d,%s,%s \r\n", job.GetID(), job.GetName(), job.GetType())
+			job := job
+			switch job.(type) {
+			case *HTTPJob:
+				b := job.(*HTTPJob)
+				log.Println(b.Name, b.Type, b.ID, b.Driver, b.Schedule)
+			case *DbJob:
+				b := job.(*DbJob)
+				log.Println(b.Name, b.Type, b.ID, b.Driver, b.Schedule)
+			default:
+				log.Println("not support type")
+			}
 		}
 	}
 	cronhub.Run()
