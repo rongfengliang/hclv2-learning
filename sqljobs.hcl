@@ -1,12 +1,12 @@
 job db  {
      sqls database1{
-        sqltype = "slowquery"
+        sqltype = "slowquery1"
         sql = <<SQL
             select * from users
         SQL
      }
-     sqls database1{
-        sqltype = "slowquery"
+     sqls database2{
+        sqltype = "slowquery2"
         sql = <<SQL
             select * from users
         SQL
@@ -14,14 +14,14 @@ job db  {
 }
 
 job http  {
-     sqls database1{
-        sqltype = "slowquery"
+     sqls database3{
+        sqltype = "slowquery3"
         sql = <<SQL
             select * from users
         SQL
      }
-     sqls database1{
-        sqltype = "slowquery"
+     sqls database4{
+        sqltype = "slowquery4"
         sql = <<SQL
             select * from users
         SQL
